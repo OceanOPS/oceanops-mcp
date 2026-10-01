@@ -14,6 +14,8 @@ Read-only [Model Context Protocol](https://modelcontextprotocol.io) server for t
 
 Pages are capped at 20 rows. Cruise search is not included: `GET /cruises` requires the Amrit gateway.
 
+`get_passport` also returns a world-map image: an amber marker for the deployment and a red marker for the last position. `search_platforms` and `get_platform` include the same map when a latest position is present.
+
 Codes such as `statusCode=operational`, `countryCode2=FR`, `programCode=argo-jamstec`, and `networkCode=argo` are resolved through the vocabulary before they are sent as database ids.
 
 ## Run

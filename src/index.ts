@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { OceanOpsError } from "./client.js";
+import { markersFrom, renderWorldMap } from "./map.js";
 import {
   VOCABULARIES,
   getPassport,
@@ -29,7 +30,7 @@ const vocabulary = z.enum([
 
 server.tool(
   "search_platforms",
-  "Search OceanOPS platforms. Returns at most 20 rows. statusCode, programCode, countryCode2, and networkCode are vocabulary codes (for example statusCode=operational, networkCode=argo), not display names. ref is a prefix; exactRef is exact. Use list_vocabulary when a code is unknown.",
+  "Search OceanOPS platforms. Returns at most 20 rows and, when positions are known, a world-map image with a marker for each latest position. statusCode, programCode, countryCode2, and networkCode are vocabulary codes (for example statusCode=operational, networkCode=argo), not display names. ref is a prefix; exactRef is exact. Use list_vocabulary when a code is unknown.",
   {
     wmoId: z.string().optional().describe("WMO platform identifier"),
     wigosId: z.string().optional().describe("WIGOS identifier"),
@@ -51,7 +52,7 @@ server.tool(
 
 server.tool(
   "get_platform",
-  "Fetch one OceanOPS platform by a single identifier: ptfId, wmoId, wigosId, or ref.",
+  "Fetch one OceanOPS platform by a single identifier: ptfId, wmoId, wigosId, or ref. Includes a world-map image when a position is known.",
   {
     ptfId: z.number().int().positive().optional().describe("OceanOPS platform database id"),
     wmoId: z.string().optional(),
@@ -70,7 +71,7 @@ server.tool(
 
 server.tool(
   "get_passport",
-  "Fetch one OceanOPS platform passport. Returns a short summary unless full is true. Provide exactly one of ptfId, wmoId, wigosId, or internalId. This does not download the full catalogue.",
+  "Fetch one OceanOPS platform passport. Returns a short summary unless full is true, plus a world-map image marking the deployment and the last position. Provide exactly one of ptfId, wmoId, wigosId, or internalId. This does not download the full catalogue.",
   {
     ptfId: z.number().int().positive().optional(),
     wmoId: z.string().optional(),
@@ -120,7 +121,15 @@ server.tool(
 async function jsonResult(work: () => Promise<unknown>) {
   try {
     const value = await work();
-    return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
+    const content: Array<
+      { type: "text"; text: string } | { type: "image"; data: string; mimeType: "image/png" }
+    > = [{ type: "text", text: JSON.stringify(value, null, 2) }];
+    const markers = markersFrom(value);
+    if (markers.length > 0) {
+      const png = await renderWorldMap(markers);
+      if (png) content.push({ type: "image", data: png, mimeType: "image/png" });
+    }
+    return { content };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { content: [{ type: "text" as const, text: message }], isError: true };
