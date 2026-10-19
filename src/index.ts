@@ -12,6 +12,7 @@ import {
   searchPlatforms,
   searchShips,
 } from "./oceanops.js";
+import { REGIONS } from "./regions.js";
 
 const server = new McpServer({
   name: "oceanops",
@@ -30,7 +31,7 @@ const vocabulary = z.enum([
 
 server.tool(
   "search_platforms",
-  "Search OceanOPS platforms. Returns at most 20 rows and, when positions are known, a world-map image with a marker for each latest position. statusCode, programCode, countryCode2, and networkCode are vocabulary codes (for example statusCode=operational, networkCode=argo), not display names. ref is a prefix; exactRef is exact. Use list_vocabulary when a code is unknown.",
+  `Search OceanOPS platforms. Returns at most 20 rows and, when positions are known, a world-map image with a marker for each latest position. For a whole ocean area, set region to one of: ${Object.keys(REGIONS).join(", ")}. The server applies that area to the latest position and returns the full total plus counts by status; items is only one page. Report total before listing rows, and pass offset for the next page. statusCode, programCode, countryCode2, and networkCode are vocabulary codes (for example statusCode=operational, networkCode=argo), not display names. ref is a prefix; exactRef is exact. Use list_vocabulary when a code is unknown.`,
   {
     wmoId: z.string().optional().describe("WMO platform identifier"),
     wigosId: z.string().optional().describe("WIGOS identifier"),
@@ -44,6 +45,10 @@ server.tool(
     networkCode: z.string().optional().describe("GOOS observing network code, such as argo"),
     deplDateFrom: z.string().optional().describe("Deployment date from, YYYY-MM-DD"),
     deplDateTo: z.string().optional().describe("Deployment date to, YYYY-MM-DD"),
+    region: z
+      .enum(Object.keys(REGIONS) as [string, ...string[]])
+      .optional()
+      .describe("Named ocean area. The server fills the latest-position box; do not invent latitudes."),
     limit: z.number().int().min(1).max(20).optional(),
     offset: z.number().int().min(0).optional(),
   },

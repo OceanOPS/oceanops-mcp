@@ -1,5 +1,6 @@
 import { clampLimit, clampOffset } from "./config.js";
 import { oceanopsGet, oceanopsPost, OceanOpsError } from "./client.js";
+import { regionBox, regionFilters } from "./regions.js";
 
 const PLATFORM_FIELDS = [
   "ref",
@@ -45,6 +46,7 @@ type PlatformFilters = {
   networkCode?: string;
   deplDateFrom?: string;
   deplDateTo?: string;
+  region?: string;
   limit?: number;
   offset?: number;
 };
@@ -53,18 +55,18 @@ export async function searchPlatforms(input: PlatformFilters) {
   const filters = await platformFilters(input);
   const limit = clampLimit(input.limit);
   const offset = clampOffset(input.offset);
-  const page = await oceanopsPost<Page<Record<string, unknown>>>("/oceanjson/platforms/search", {
-    filters,
-    fields: PLATFORM_FIELDS,
-    limit,
-    offset,
-    view: "flat",
-  });
+  const page = await searchPlatformPage(filters, limit, offset);
+  const region = input.region ? regionBox(input.region) : undefined;
   return {
     limit,
     offset,
     total: page.total,
     filters,
+    region,
+    byStatus: region && !filters.status ? await countByStatus(filters) : undefined,
+    note: region
+      ? "total is every platform whose latest position is inside the region. items is one page of at most 20 rows. Pass offset for the next page."
+      : undefined,
     items: (page.items ?? []).map(trimPlatform),
   };
 }
@@ -199,7 +201,29 @@ async function platformFilters(input: PlatformFilters): Promise<Record<string, s
   if (input.networkCode) {
     filters.masterNetworks = String((await vocabByCode("/vocab/goos-observing-networks", input.networkCode)).id);
   }
+  if (input.region) Object.assign(filters, regionFilters(regionBox(input.region)));
   return filters;
+}
+
+async function searchPlatformPage(filters: Record<string, string>, limit: number, offset: number) {
+  return oceanopsPost<Page<Record<string, unknown>>>("/oceanjson/platforms/search", {
+    filters,
+    fields: PLATFORM_FIELDS,
+    limit,
+    offset,
+    view: "flat",
+  });
+}
+
+async function countByStatus(filters: Record<string, string>) {
+  const statuses = await oceanopsGet<Page<VocabItem>>("/vocab/ptf-statuses", { limit: 20 });
+  const counts = await Promise.all(
+    (statuses.items ?? []).map(async (status) => {
+      const page = await searchPlatformPage({ ...filters, status: String(status.id) }, 1, 0);
+      return { code: status.code, name: status.name, total: page.total ?? 0 };
+    }),
+  );
+  return counts.filter((status) => status.total > 0);
 }
 
 async function vocabByCode(collection: string, code: string): Promise<VocabItem> {
