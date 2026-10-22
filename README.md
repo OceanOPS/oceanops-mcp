@@ -5,9 +5,9 @@ Two read-only [Model Context Protocol](https://modelcontextprotocol.io) servers 
 | Process | Entry | Audience |
 |---|---|---|
 | `oceanops` | `dist/index.js` | Catalogue: platforms, passports, ships, vocab |
-| `oceanops-ops` | `dist/ops.js` | Ops: harvest ingestion review |
+| `oceanops-ops` | `dist/ops.js` | Ops: harvest ingestion and QC anomalies |
 
-Keep them as separate MCP servers so a morning harvest review does not see `search_platforms`, and a catalogue chat does not see harvest tools. Same repo, same HTTP client. Harvest is the first ops slice; later dataload / WIGOS tools belong on `oceanops-ops`.
+Keep them as separate MCP servers so a morning harvest or QC review does not see `search_platforms`, and a catalogue chat does not see ops tools. Same repo, same HTTP client. Harvest and QC are the first ops slices; later dataload / WIGOS tools belong on `oceanops-ops`.
 
 ## Catalogue tools (`oceanops`)
 
@@ -37,8 +37,15 @@ Codes such as `statusCode=operational`, `countryCode2=FR`, `programCode=argo-jam
 | `list_harvest_attempts` | `GET /harvest/runs/{runId}/items/{itemId}/attempts` |
 | `list_harvest_logs` | `GET /harvest/runs/{id}/logs` |
 | `get_harvest_attempt` | `GET /harvest/attempts/{id}` |
+| `review_qc` | `GET /qc/anomalies` — current counts, risers/fallers, calculation errors |
+| `list_qc_anomalies` | `GET /qc/anomalies` |
+| `get_qc_anomaly` | `GET /qc/anomalies` filtered by code |
+| `list_qc_offenders` | `GET /qc/anomalies/{code}/items` |
+| `suggest_qc_fills` | same items, plus a proposed value per row |
 
-These monitor metadata ingestion (LDL, VOTO ERDDAP, MFP cruises), not the platform catalogue. `review_harvests` is the morning briefing: runs for a day, SUCCESS / PARTIAL / FAILED, and failed items grouped by error. Drill into one item with `list_harvest_items`, `list_harvest_attempts`, and `get_harvest_attempt`.
+Harvest tools monitor metadata ingestion (LDL, VOTO ERDDAP, MFP cruises). `review_harvests` is the morning briefing: runs for a day, SUCCESS / PARTIAL / FAILED, and failed items grouped by error.
+
+QC tools read the same daily anomaly counts as [oceanops-qc-dashboard](https://github.com/OceanOPS/oceanops-qc-dashboard). `review_qc` is the briefing. `list_qc_offenders` lists the programs, platforms, or GTS IDs behind a count. `suggest_qc_fills` adds a proposed value (network WIGOS code, agency country, swapped dates, …) and does **not** write. The items endpoint lives in `oceanops-api-main` and must be deployed for offender tools to work against prod.
 
 ## Run
 

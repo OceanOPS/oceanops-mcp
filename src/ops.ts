@@ -10,11 +10,12 @@ import {
   listHarvestRuns,
   reviewHarvests,
 } from "./harvest.js";
+import { getQcAnomaly, listQcAnomalies, listQcOffenders, reviewQc, suggestQcFills } from "./qc.js";
 import { jsonTextResult } from "./result.js";
 
 const server = new McpServer({
   name: "oceanops-ops",
-  version: "0.1.0",
+  version: "0.2.0",
 });
 
 server.tool(
@@ -85,6 +86,64 @@ server.tool(
     attemptId: z.number().int().positive(),
   },
   async (input) => jsonTextResult(() => getHarvestAttempt(input)),
+);
+
+server.tool(
+  "review_qc",
+  "Morning-style review of OceanOPS database QC anomalies (same data as oceanops-qc-dashboard). Current counts, day-over-day risers/fallers, and calculation errors. A non-zero count is a known data-quality issue, not a failed job.",
+  {
+    date: z.string().optional().describe("Calendar day YYYY-MM-DD. Default is the latest calculation."),
+    category: z
+      .string()
+      .optional()
+      .describe("Category such as Platform metadata, Program metadata, Deployment metadata, Sensors, or GTS identifiers"),
+  },
+  async (input) => jsonTextResult(() => reviewQc(input)),
+);
+
+server.tool(
+  "list_qc_anomalies",
+  "List QC anomaly checks with current count, previous count, and a short history. Filter by category or free text.",
+  {
+    category: z.string().optional().describe("Exact category name, for example Program metadata"),
+    q: z.string().optional().describe("Match code, name, description, or category"),
+    historyDays: z.number().int().min(1).max(366).optional().describe("History points to keep. Default 7."),
+  },
+  async (input) => jsonTextResult(() => listQcAnomalies(input)),
+);
+
+server.tool(
+  "get_qc_anomaly",
+  "Fetch one QC anomaly by stable code (for example programs_without_wigos_code), including daily history.",
+  {
+    code: z.string().describe("Anomaly code from list_qc_anomalies or review_qc"),
+    historyDays: z.number().int().min(1).max(366).optional().describe("History points to keep. Default 90."),
+  },
+  async (input) => jsonTextResult(() => getQcAnomaly(input)),
+);
+
+server.tool(
+  "list_qc_offenders",
+  "List the records behind a QC count (programs, platforms, deployments, or GTS IDs). Paginated. Read-only. Requires GET /qc/anomalies/{code}/items on the API.",
+  {
+    code: z.string().describe("Anomaly code such as programs_without_wigos_code"),
+    q: z.string().optional().describe("Match code, name, ref, WMO, or related text"),
+    limit: z.number().int().min(1).max(100).optional(),
+    offset: z.number().int().min(0).optional(),
+  },
+  async (input) => jsonTextResult(() => listQcOffenders(input)),
+);
+
+server.tool(
+  "suggest_qc_fills",
+  "Same offender list plus a proposed fill per row (WIGOS code, country, lead agency, model, swapped GTS dates). Does not write to OceanOPS. Review before applying.",
+  {
+    code: z.string().describe("Anomaly code such as programs_without_wigos_code"),
+    q: z.string().optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+    offset: z.number().int().min(0).optional(),
+  },
+  async (input) => jsonTextResult(() => suggestQcFills(input)),
 );
 
 const transport = new StdioServerTransport();

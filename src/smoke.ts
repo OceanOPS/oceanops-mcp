@@ -1,6 +1,7 @@
 import { getHarvestAttempt, listHarvestAttempts, listHarvestItems, listHarvestLogs, listHarvestRuns, reviewHarvests } from "./harvest.js";
 import { markersFrom, renderWorldMap } from "./map.js";
 import { getPassport, listVocabulary, searchPlatforms, searchShips } from "./oceanops.js";
+import { getQcAnomaly, listQcAnomalies, listQcOffenders, reviewQc, suggestQcFills } from "./qc.js";
 
 const status = await listVocabulary({ vocabulary: "ptf-statuses", limit: 5 });
 const platforms = await searchPlatforms({ wmoId: "2900314", limit: 1 });
@@ -47,6 +48,30 @@ if (failedRun) {
   harvestFailure = { runId: failedRun.runId, itemKey: item.itemKey, attemptId: attempts.items[0].id };
 }
 
+const qcReview = await reviewQc();
+if (qcReview.anomalyCount < 1) throw new Error("qc review empty");
+const qcList = await listQcAnomalies({ historyDays: 3 });
+if (qcList.items.length === 0) throw new Error("qc anomalies empty");
+const qcOne = await getQcAnomaly({ code: qcList.items[0].code, historyDays: 5 });
+if (!qcOne.item.current) throw new Error("qc anomaly missing current count");
+
+let qcOffenders: { total: number; proposed?: number; sample?: string } | { unavailable: string } = {
+  unavailable: "not deployed",
+};
+try {
+  const offenders = await listQcOffenders({ code: "programs_without_wigos_code", limit: 3 });
+  if (offenders.items.length === 0 && offenders.total > 0) throw new Error("qc offenders page empty");
+  const fills = await suggestQcFills({ code: "programs_without_wigos_code", limit: 3 });
+  qcOffenders = {
+    total: offenders.total,
+    proposed: fills.proposed,
+    sample: String(offenders.items[0]?.code ?? offenders.items[0]?.ref ?? ""),
+  };
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (!/\b404\b/.test(message)) throw error;
+}
+
 console.log(
   JSON.stringify(
     {
@@ -59,6 +84,15 @@ console.log(
         runCount: harvestReview.runCount,
         byStatus: harvestReview.byStatus,
         failure: harvestFailure,
+      },
+      qc: {
+        date: qcReview.date,
+        anomalyCount: qcReview.anomalyCount,
+        calculationErrors: qcReview.calculationErrors,
+        rising: qcReview.rising,
+        sample: qcOne.item.code,
+        sampleValue: qcOne.item.current?.value,
+        offenders: qcOffenders,
       },
     },
     null,
